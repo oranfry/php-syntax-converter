@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?php
 
 const MATCHING_BRACES = [
@@ -21,12 +22,7 @@ const ENDS = [
 
 $elseif = PhpToken::tokenize('<?php if (1) {} elseif (2) {}')[10];
 
-$code = file_get_contents($argv[1]);
-
-ob_start();
-convert($code);
-file_put_contents($argv[1], ob_get_contents());
-ob_end_clean();
+convert(stream_get_contents(STDIN));
 
 function convert($code)
 {
