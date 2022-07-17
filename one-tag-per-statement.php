@@ -40,9 +40,9 @@ while ($token = array_shift($tokens)) {
                 }
 
                 if ($name == ':' && ($just_opened_switch || $ternary_level)) {
-                    $just_opened_switch = false;
-
-                    if ($ternary_level) {
+                    if ($just_opened_switch) {
+                        $just_opened_switch = false;
+                    } else {
                         $ternary_level--;
                     }
 
