@@ -1,14 +1,7 @@
 #!/usr/bin/php
 <?php
 
-const MATCHING_BRACES = [
-    '${' => '}',
-    '(' => ')',
-    '[' => ']',
-    'T_CURLY_OPEN' => '}',
-    'T_DOLLAR_OPEN_CURLY_BRACES' => '}',
-    '{' => '}',
-];
+require __DIR__ . '/lib.php';
 
 const ENDS = [
     'T_IF' => 'endif',
@@ -20,88 +13,18 @@ const ENDS = [
     'T_SWITCH' => 'endswitch',
 ];
 
-$elseif = PhpToken::tokenize('<?php if (1) {} elseif (2) {}')[10];
-
-convert(stream_get_contents(STDIN));
-
 function convert($code)
 {
     $tokens = PhpToken::tokenize($code);
+    $handler = new to_alternative;
 
-    replace_structures_r($tokens); // return null at top level
-}
+    convert_r($handler, $tokens);
 
-function replace_structures_r(array &$tokens, ?string $context = null, $level = 0)
-{
-    global $elseif;
+    if ($handler->level !== 0) {
+        error_log('level not zero at the end, [' . $handler->level . '] instead');
 
-    $search = null;
-
-    if ($context) {
-        if (!$search = @MATCHING_BRACES[$context]) {
-            return;
-        }
+        exit(1);
     }
-
-    passthru_whitespace_and_comments($tokens);
-
-    while ($token = array_shift($tokens)) {
-        // We have found the close of the current context, fall out
-
-        if ($search && $token->getTokenName() == $search) {
-            return $token;
-        }
-
-        if (in_array($token->getTokenName(), array_keys(MATCHING_BRACES))) { // found an opening brace other than for a control structure, recurse
-            echo $token->text; // echo opening brace
-            echo replace_structures_r($tokens, $token->text, $level + 1)->text; // echo closing brace
-        } elseif (in_array($token->getTokenName(), array_keys(ENDS))) { // we have found the beginning of a control structure, prepare to recurse
-            $opening_token = $token;
-
-            if ($token->getTokenName() == 'T_ELSE') { // combine "else if" into "elseif"
-                for ($i = 0; ($peek = @$tokens[$i]) && in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
-
-                if ($peek->getTokenName() == 'T_IF') {
-                    for (; $i >= 0; $i--) {
-                        array_shift($tokens);
-                    }
-                    
-                    $opening_token = $elseif;
-                }
-            }
-
-            echo $opening_token->text; // e.g., 'if'
-
-            passthru_whitespace_and_comments($tokens);
-
-            if ($tokens[0]->getTokenName() == '(') {
-                echo array_shift($tokens)->text; // '('
-                echo replace_structures_r($tokens, '(', $level + 1)->text; // ')'
-            }
-
-            passthru_whitespace_and_comments($tokens);
-
-            $token = array_shift($tokens); // '{', ':', etc.
-
-            if (@MATCHING_BRACES[$token->getTokenName()]) {
-                echo ':'; // instead of {
-
-                $closing_token = replace_structures_r($tokens, $token->getTokenName(), $level + 1); // ignore closing token
-
-                for ($i = 0; ($peek = @$tokens[$i]) && in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
-
-                if (!$peek || !in_array($peek->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
-                    echo ENDS[$opening_token->getTokenName()] . ';';
-                }
-            } else { // ':'
-                echo $token->text;
-            }
-        } else {
-            echo $token->text;
-        }
-    }
-
-    return '';
 }
 
 function passthru_whitespace_and_comments(array &$tokens)
@@ -110,3 +33,73 @@ function passthru_whitespace_and_comments(array &$tokens)
         echo array_shift($tokens)->text;
     }
 }
+
+class to_alternative implements conversion_handler
+{
+    public int $level = 0;
+ 
+    public function enter_context(array &$tokens, array $context_closers, ?string $control = null): void
+    {
+        $token = array_shift($tokens);
+
+        // error_log(str_repeat(' ', $this->level * 2) . $token->text);
+
+        if (defined('DEBUG') && DEBUG) {
+            echo "\n";
+            echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
+            echo str_repeat(' ', $this->level * 2);
+            echo $token->text;
+            echo '        <' . implode('|', $context_closers) . '>';
+            echo "\n";
+        }
+
+        if ($control) {
+            echo ':';
+        } else {
+            echo $token->text; // echo opening brace
+        }
+
+        $this->level++;
+    }
+    
+    public function handle_tokens(array &$tokens): void
+    {
+        $token = array_shift($tokens);
+
+        if (defined('DEBUG') && DEBUG) {
+            if (in_array($token->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
+                echo "\n";
+                echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
+                echo str_repeat(' ', $this->level * 2);
+                echo $token->text;
+                echo "\n";
+            }
+        }
+
+        echo $token->text; // echo stuff in the middle
+    }
+
+    public function leave_context(array &$tokens, ?string $control): void
+    {
+        $token = array_shift($tokens);
+
+        $this->level--;
+
+        if (defined('DEBUG') && DEBUG) {
+            // error_log(str_repeat(' ', $this->level * 2) . $token->text);
+            echo "\n";
+            echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
+            echo str_repeat(' ', $this->level * 2);
+            echo $token->text;
+            echo "\n";
+        }
+
+        if ($control && !in_array($token->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
+            echo ENDS[$control];
+        } else {
+            echo $token->text; // echo closing brace
+        }
+    }
+}
+
+convert(stream_get_contents(STDIN));

@@ -2,6 +2,7 @@
 <?php
 
 $code = stream_get_contents(STDIN);
+$tokens = PhpToken::tokenize($code);
 
 $sample = PhpToken::tokenize('a <?php echo "b"; ?> c');
 $opening = $sample[1];
@@ -11,11 +12,12 @@ $in_php = false;
 $just_opened_php = false;
 $just_opened_switch = false;
 $just_saw_comment = false;
+$just_ended_heredoc = false;
 $phpbits = [];
-$prev = null;
-$ternary_level = 0;
 
-$tokens = PhpToken::tokenize($code);
+$ternary_level = 0;
+$for_level = 0;
+$fn_level = 0;
 
 while ($token = array_shift($tokens)) {
     if ($in_php) {
@@ -23,7 +25,7 @@ while ($token = array_shift($tokens)) {
         $name = $token->getTokenName();
 
         if ($name !== 'T_WHITESPACE') {
-            $just_saw_comment = false;   
+            $just_saw_comment = false;
         }
 
         switch ($name) {
@@ -36,15 +38,29 @@ while ($token = array_shift($tokens)) {
             case 'T_COMMENT':
             case 'T_DOC_COMMENT':
                 if ($is_comment = in_array($name, ['T_COMMENT', 'T_DOC_COMMENT'])) {
-                    $just_saw_comment = true;   
+                    $just_saw_comment = true;
                 }
 
-                if ($name == ':' && ($just_opened_switch || $ternary_level)) {
+                if ($name == 'T_COMMENT') {
+                    break;
+                }
+
+                if ($name == ':' && ($just_opened_switch || $ternary_level || $fn_level)) {
                     if ($just_opened_switch) {
                         $just_opened_switch = false;
+                    } elseif ($fn_level) {
+                        $fn_level--;
                     } else {
                         $ternary_level--;
                     }
+
+                    $phpbits[] = $token;
+
+                    break;
+                }
+
+                if ($name == ';' && $for_level) {
+                    $for_level--;
 
                     $phpbits[] = $token;
 
@@ -74,7 +90,15 @@ while ($token = array_shift($tokens)) {
                         echo $token->text;
                     }
 
-                    echo ' ' . $closing->text;
+                    if ($just_ended_heredoc) {
+                        $just_ended_heredoc = false;
+
+                        echo "\n";
+                    } else {
+                        echo ' ';
+                    }
+
+                    echo $closing->text;
 
                     foreach ($trailing_whitespace as $whitespace) {
                         echo $whitespace->text;
@@ -97,6 +121,21 @@ while ($token = array_shift($tokens)) {
                     $ternary_level++;
                 }
 
+            case 'T_FOR':
+                if ($name == 'T_FOR') {
+                    $for_level = 2;
+                }
+
+            case 'T_FN':
+                if ($name == 'T_FN') {
+                    $fn_level++;
+                }
+
+            case 'T_END_HEREDOC':
+                if ($name == 'T_END_HEREDOC') {
+                    $just_ended_heredoc = true;
+                }
+
             default:
                 $phpbits[] = $token;
         }
@@ -107,6 +146,7 @@ while ($token = array_shift($tokens)) {
         echo $token->text;
     }
 }
+
 
 function trim_whitespace(array $bits, array &$leading, array &$trailing)
 {
