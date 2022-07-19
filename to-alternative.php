@@ -37,44 +37,31 @@ function passthru_whitespace_and_comments(array &$tokens)
 class to_alternative implements conversion_handler
 {
     public int $level = 0;
- 
-    public function enter_context(array &$tokens, array $context_closers, ?string $control = null): void
+    public bool $colin = false;
+
+    public function enter_context(array &$tokens, bool $braceless = false): void
     {
         $token = array_shift($tokens);
 
-        // error_log(str_repeat(' ', $this->level * 2) . $token->text);
-
-        if (defined('DEBUG') && DEBUG) {
-            echo "\n";
-            echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
-            echo str_repeat(' ', $this->level * 2);
-            echo $token->text;
-            echo '        <' . implode('|', $context_closers) . '>';
-            echo "\n";
-        }
-
-        if ($control) {
-            echo ':';
+        if ($this->colin) {
+            $this->colin = false;
         } else {
             echo $token->text; // echo opening brace
         }
 
         $this->level++;
     }
-    
+
+    public function enter_control_body(array &$tokens, string $control): void
+    {
+        echo ':';
+
+        $this->colin = true;
+    }
+
     public function handle_tokens(array &$tokens): void
     {
         $token = array_shift($tokens);
-
-        if (defined('DEBUG') && DEBUG) {
-            if (in_array($token->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
-                echo "\n";
-                echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
-                echo str_repeat(' ', $this->level * 2);
-                echo $token->text;
-                echo "\n";
-            }
-        }
 
         echo $token->text; // echo stuff in the middle
     }
@@ -85,19 +72,14 @@ class to_alternative implements conversion_handler
 
         $this->level--;
 
-        if (defined('DEBUG') && DEBUG) {
-            // error_log(str_repeat(' ', $this->level * 2) . $token->text);
-            echo "\n";
-            echo str_pad($token->line, 10, ' ', STR_PAD_LEFT) . ' ';
-            echo str_repeat(' ', $this->level * 2);
-            echo $token->text;
-            echo "\n";
-        }
+        if ($control && $token->getTokenName() === '}') {
+            for ($i = 0, $peek = null; ($peek = @$tokens[$i]) && in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
 
-        if ($control && !in_array($token->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
-            echo ENDS[$control];
+            if (!$peek || !in_array($peek->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
+                echo ENDS[$control] . ';';
+            }
         } else {
-            echo $token->text; // echo closing brace
+            echo $token->text;
         }
     }
 }
