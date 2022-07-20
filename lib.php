@@ -28,9 +28,14 @@ class signaller
     {
         $this->handler = $handler;
 
-        if ($tokens) {
+        if ($tokens !== null) {
             $this->tokens = &$tokens;
         }
+    }
+
+    public function setTokens(?array $tokens)
+    {
+        $this->tokens = $tokens;
     }
 
     private function handle_control($name, $already_started = false)
