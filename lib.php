@@ -31,11 +31,26 @@ class signaller
         if ($tokens !== null) {
             $this->tokens = &$tokens;
         }
+
+        $this->handler->set_signaller($this);
     }
 
     public function setTokens(?array $tokens)
     {
         $this->tokens = $tokens;
+    }
+
+    public function peek(array $exceptions = [], &$index = null)
+    {
+        for (
+            $i = 0;
+            ($token = @$this->tokens[$i]) && in_array($token->getTokenName(), $exceptions);
+            $i++
+        );
+
+        $index = $i;
+
+        return $token;
     }
 
     private function handle_control($name, $already_started = false)
@@ -68,37 +83,50 @@ class signaller
 
             // We have found the beginning of the "body" of the control structure
 
-            $body_message = $this->handler->enter_control_body($this->tokens, $name);
-
             $daisychain = null;
 
             if ($peek->getTokenName() == ':') {
+                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+
                 $closed_by = $this->convert_r(':', CONTROL_STRUCTURES[$name]);
 
                 if (in_array($closed_by, ['T_ELSEIF', 'T_ELSE'])) {
                     $daisychain = $closed_by;
                 }
+
+                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
             } elseif ($peek->getTokenName() == '{') {
+                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+
                 $this->convert_r('{', ['}']);
 
-                for ($i = 0, $peek2 = null; ($peek2 = @$this->tokens[$i]) && in_array($peek2->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
+                $peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT']);
 
                 if ($peek2 && in_array($peek2_name = $peek2->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
                     $daisychain = $peek2_name;
                 }
+
+                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
             } elseif (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
+                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+
                 $this->handle_control($peek->getTokenName());
-            } else {
+
+                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+            } elseif (($peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT'])) && $peek2->getTokenName() !== 'T_CLOSE_TAG') {
+                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+
                 $this->handle_statement();
 
-                for ($i = 0, $peek2 = null; ($peek2 = @$this->tokens[$i]) && in_array($peek2->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
+                $peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT']);
 
                 if ($peek2 && in_array($peek2_name = $peek2->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
                     $daisychain = $peek2_name;
                 }
+
+                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
             }
 
-            $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
             $this->handler->leave_control($this->tokens, $name, $daisychain, $message);
 
             return;
@@ -169,4 +197,5 @@ interface conversion_handler {
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void;
     public function leave_control_body(array &$tokens, string $name, ?string $daisychain, $message): void;
     public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void;
+    public function set_signaller(signaller $signaller): void;
 }

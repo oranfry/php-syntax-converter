@@ -21,6 +21,8 @@ const ENDERS = [
     'T_ENDSWITCH',
 ];
 
+const DEBUG_PREFIX = '        ';
+
 function convert($code)
 {
     $tokens = PhpToken::tokenize($code);
@@ -41,13 +43,20 @@ class to_alternative implements conversion_handler
     public $control_body_starting = false;
     public int $level = 0;
     public $id = 0;
+    public $signaller = null;
+
+    public function set_signaller(signaller $signaller): void
+    {
+        $this->signaller = $signaller;
+    }
 
     public function enter_context(array &$tokens, ?string $context_opener, ?array $context_closers)
     {
         $opening_tag_suppressed = false;
 
         $id = ++$this->id;
-        // echo '<context:' . $id . '>';
+
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="context">' . "\n";
 
         if ($this->control_body_starting) {
             $this->control_body_starting = false;
@@ -57,6 +66,8 @@ class to_alternative implements conversion_handler
                 array_shift($tokens);
             } elseif ($context_opener == ':') {
                 array_shift($tokens); // our enter_control_body will print it
+            // } else {
+            //     echo '«' . @$tokens[0] . '»';
             }
         } elseif ($context_opener) {
             $this->handle_tokens($tokens);
@@ -75,11 +86,13 @@ class to_alternative implements conversion_handler
 
         $id = ++$this->id;
 
-        // echo '<control:' . $id . '>';
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="control">' . "\n";
 
         if (!in_array($control, ['T_ELSE', 'T_ELSEIF'])) {
             $this->handle_tokens($tokens);
         }
+
+        $this->level++;
 
         return (object) compact('id');
     }
@@ -87,13 +100,16 @@ class to_alternative implements conversion_handler
     public function enter_control_body(array &$tokens, string $name)
     {
         $this->control_body_starting = true;
+
         echo ':';
 
         $id = ++$this->id;
 
-        // echo '<controlbody:' . $id . '>';
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="controlbody">' . "\n";
 
         $end = ENDS[$name];
+
+        $this->level++;
 
         return (object) compact('id', 'end');
     }
@@ -103,7 +119,11 @@ class to_alternative implements conversion_handler
         $token = array_shift($tokens);
 
         if ($token) {
-            echo $token->text; // echo stuff in the middle
+            if ($token->getTokenName() !== 'T_INLINE_HTML') {
+                echo str_repeat(DEBUG_PREFIX, $this->level) . htmlspecialchars($token->text) . "<br>\n"; // echo stuff in the middle
+            } else {
+                echo str_repeat(DEBUG_PREFIX, $this->level) . '«HTML»' . "<br>\n"; // echo stuff in the middle
+            }
         } else {
             error_log('Asked to handle token but there is none');
             error_log(print_r(debug_backtrace(), true));
@@ -112,16 +132,19 @@ class to_alternative implements conversion_handler
 
     public function leave_control_body(array &$tokens, string $control, ?string $daisychain, $message): void
     {
+        $this->level--;
+
         if (!$daisychain) {
             echo $message->end . ';';
         }
 
-        // echo '</controlbody:' . $message->id . '>';
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- /controlbody -->' . "\n";
     }
 
     public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void
     {
-        // echo '</control:' . $message->id . '>';
+        $this->level--;
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- /control -->' . "\n";
     }
 
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
@@ -129,15 +152,13 @@ class to_alternative implements conversion_handler
         $this->level--;
 
         if ($message->opening_tag_suppressed) {
-            if (($got = array_shift($tokens))->getTokenName() !== '}') {
+            $got = array_shift($tokens);
+
+            if ($got->getTokenName() !== '}') {
                 error_log('expected }, got ' . $got->getTokenName());
                 exit(1);
             }
-
-            return;
-        }
-
-        if ($context_closer) {
+        } elseif ($context_closer) {
             if (in_array($context_closer, ENDERS)) {
                 $got = array_shift($tokens);
 
@@ -147,18 +168,24 @@ class to_alternative implements conversion_handler
                     exit(1);
                 }
 
-                for ($i = 0, $peek = null; ($peek = @$tokens[$i]) && in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
+                $peek = $this->signaller->peek(['T_WHITESPACE', 'T_COMMENT'], $peek_index);
 
                 if ($peek && $peek->getTokenName() === ';') {
-                    array_splice($tokens, $i, 1);
+                    array_splice($tokens, $peek_index, 1);
                 }
-            } elseif (!in_array($context_closer, ['T_ELSE', 'T_ELSEIF'])) {
+            } elseif (!in_array($context_closer, ['T_ELSE', 'T_ELSEIF' /*, 'T_CLOSE_TAG' */])) {
                 $this->handle_tokens($tokens);
+            // } elseif ($context_closer == 'T_CLOSE_TAG') {
+            //     echo '«';
+            //     $this->handle_tokens($tokens);
+            //     echo '»';
             }
         }
 
-        // echo '</context:' . $message->id . '>';
+        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- context -->' . "\n";
     }
 }
+
+echo '<style>div { margin: 0 0 0 1em } .context { background-color: lightblue; } .control { background-color: pink; } .controlbody { background-color: lightgreen; }</style>';
 
 convert(stream_get_contents(STDIN));
