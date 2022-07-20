@@ -19,97 +19,149 @@ const CONTROL_STRUCTURES = [
     'T_SWITCH' => ['T_ENDSWITCH'],
 ];
 
-function convert_r(conversion_handler $handler, array &$tokens, ?array $context_closers = null, ?string $control = null)
+class signaller
 {
-    $last_control = null;
-    $expect_control_details = (bool) $control;
-    $control_body_closers = null;
-    $ternary_level = 0;
+    private $handler;
+    private $tokens;
 
-    while ($peek = @$tokens[0]) {
-        if ($context_closers && in_array($peek->getTokenName(), $context_closers)) {
-            // We have found the close of the current context, fall out
+    public function __construct(conversion_handler $handler, ?array &$tokens = null)
+    {
+        $this->handler = $handler;
 
-            $handler->leave_context($tokens, $control);
-
-            return $peek->getTokenName();
+        if ($tokens) {
+            $this->tokens = &$tokens;
         }
+    }
 
-        if ($control) {
-            if ($expect_control_details && $peek->getTokenName() == '(') {
+    private function handle_control($name, $already_started = false)
+    {
+        $message = $this->handler->enter_control($this->tokens, $name);
+
+        $expect_control_details = $name !== 'T_ELSE';
+
+        while ($peek = @$this->tokens[0]) {
+            if (!$already_started && $peek->getTokenName() === $name) {
+                $this->handler->handle_tokens($this->tokens);
+                $already_started = true;
+
+                continue;
+            }
+
+            if ($expect_control_details && $peek->getTokenName() === '(') {
+                $this->convert_r('(', [')']);
+
                 $expect_control_details = false;
-            } elseif (!in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT'])) {
-                // We have found the beginning of the "body" of a control structure
 
-                $handler->enter_control_body($tokens, $last_control);
+                continue;
+            }
 
-                $braceless = false;
+            if (in_array($peek->getTokenName(), ['T_WHITESPACE', 'T_COMMENT'])) {
+                $this->handler->handle_tokens($this->tokens);
 
-                if ($peek->getTokenName() == ':') {
-                    $callee_context_closers = CONTROL_STRUCTURES[$last_control];
-                } elseif (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
-                } elseif ($peek->getTokenName() == '{') {
-                    $callee_context_closers = ['}'];
-                } else {
-                    $braceless = true;
-                    $callee_context_closers = [';', 'T_CLOSE_TAG'];
-                }
+                continue;
+            }
 
-                $handler->enter_context($tokens, $braceless);
-                $closed_by = convert_r($handler, $tokens, $callee_cexpect_control_detailsontext_closers, $last_control);
+            // We have found the beginning of the "body" of the control structure
+
+            $body_message = $this->handler->enter_control_body($this->tokens, $name);
+
+            $daisychain = null;
+
+            if ($peek->getTokenName() == ':') {
+                $closed_by = $this->convert_r(':', CONTROL_STRUCTURES[$name]);
 
                 if (in_array($closed_by, ['T_ELSEIF', 'T_ELSE'])) {
-                    $last_control = $closed_by;
-                } else {
-                    $last_control = null;
+                    $daisychain = $closed_by;
+                }
+            } elseif ($peek->getTokenName() == '{') {
+                $this->convert_r('{', ['}']);
+
+                for ($i = 0, $peek2 = null; ($peek2 = @$this->tokens[$i]) && in_array($peek2->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
+
+                if ($peek2 && in_array($peek2_name = $peek2->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
+                    $daisychain = $peek2_name;
+                }
+            } elseif (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
+                $this->handle_control($peek->getTokenName());
+            } else {
+                $this->handle_statement();
+
+                for ($i = 0, $peek2 = null; ($peek2 = @$this->tokens[$i]) && in_array($peek2->getTokenName(), ['T_WHITESPACE', 'T_COMMENT']); $i++);
+
+                if ($peek2 && in_array($peek2_name = $peek2->getTokenName(), ['T_ELSEIF', 'T_ELSE'])) {
+                    $daisychain = $peek2_name;
                 }
             }
+
+            $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+            $this->handler->leave_control($this->tokens, $name, $daisychain, $message);
+
+            return;
         }
+    }
 
-        if (in_array($peek->getTokenName(), array_keys(MATCHING_BRACES))) {
-            // We have found the beginning of a context
+    private function handle_statement()
+    {
+        $this->convert_r('', [';', 'T_CLOSE_TAG']);
+    }
 
-            if ($control_body_closers) {
-                $callee_context_closers = &$control_body_closers;
-                $control_body_closers = null;
-                $expect_control_details = false;
-                $last_control = null;
-            } elseif ($matching_brace = @MATCHING_BRACES[$peek->getTokenName()]) {
-                $callee_context_closers = [$matching_brace];
-            } else {
-                $callee_context_closers = [';'];
+    public function convert()
+    {
+        $this->convert_r();
+    }
+
+    private function convert_r(?string $context_opener = null, ?array $context_closers = null)
+    {
+        $ternary_level = 0;
+
+        $message = $this->handler->enter_context($this->tokens, $context_opener, $context_closers);
+
+        while ($peek = @$this->tokens[0]) {
+            if ($context_closers && in_array($peek->getTokenName(), $context_closers)) {
+                // We have found the close of the current context, fall out
+
+                $this->handler->leave_context($this->tokens, $context_opener, $peek->getTokenName(), $message);
+
+                return $peek->getTokenName();
             }
 
-            $handler->enter_context($tokens);
+            if (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
+                // found a control structure (if, foreach , switch, ...)
 
-            convert_r($handler, $tokens, $callee_context_closers);
+                $this->handle_control($peek->getTokenName());
 
-            continue;
+                continue;
+            }
+
+            if ($matching_brace = @MATCHING_BRACES[$peek->getTokenName()]) {
+                // We have found the beginning of a context
+
+                $this->convert_r($peek->getTokenName(), [$matching_brace]);
+
+                continue;
+            }
+
+            if ($peek->getTokenName() == '?') {
+                $ternary_level++;
+            }
+
+            if ($peek->getTokenName() == ':' && $ternary_level) {
+                $ternary_level--;
+            }
+
+            $this->handler->handle_tokens($this->tokens);
         }
 
-        if (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
-            // found a control structure (if, foreach ,...)
-
-            $handler->enter_control($tokens, $peek->getTokenName());
-
-            convert_r($handler, $tokens, null, $peek->getTokenName());
-        }
-
-        if ($peek->getTokenName() == '?') {
-            $ternary_level++;
-        }
-
-        if ($peek->getTokenName() == ':' && $ternary_level) {
-            $ternary_level--;
-        }
-
-        $handler->handle_tokens($tokens);
+        $this->handler->leave_context($this->tokens, $context_opener, null, $message);
     }
 }
 
 interface conversion_handler {
-    public function enter_context(array &$tokens, bool $braceless = false): void;
-    public function enter_control_body(array &$tokens, string $control): void;
+    public function enter_context(array &$tokens, ?string $context_opener, ?array $context_closers);
+    public function enter_control_body(array &$tokens, string $name);
+    public function enter_control(array &$tokens, string $name);
     public function handle_tokens(array &$tokens): void;
-    public function leave_context(array &$tokens, ?string $control): void;
+    public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void;
+    public function leave_control_body(array &$tokens, string $name, ?string $daisychain, $message): void;
+    public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void;
 }
