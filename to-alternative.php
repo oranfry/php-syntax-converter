@@ -87,10 +87,15 @@ class to_alternative implements conversion_handler
         $id = ++$this->id;
 
         echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="control">' . "\n";
+        $got = @$tokens[0];
 
-        if (!in_array($control, ['T_ELSE', 'T_ELSEIF'])) {
-            $this->handle_tokens($tokens);
+        if (!$got || $got->getTokenName() !== $control) {
+            error_log('expected ' . $control . ', got ' ($got ? $got->getTokenName() : 'null'));
+
+            exit(1);
         }
+
+        $this->handle_tokens($tokens);
 
         $this->level++;
 
