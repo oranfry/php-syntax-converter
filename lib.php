@@ -57,6 +57,8 @@ class signaller
     {
         $message = $this->handler->enter_control($this->tokens, $name);
 
+        $this->handler->handle_tokens($this->tokens);
+
         $expect_control_details = $name !== 'T_ELSE';
 
         while ($peek = @$this->tokens[0]) {
@@ -141,6 +143,10 @@ class signaller
         $ternary_level = 0;
 
         $message = $this->handler->enter_context($this->tokens, $context_opener, $context_closers);
+
+        if ($context_opener) {
+            $this->handler->handle_tokens($this->tokens);
+        }
 
         while ($peek = @$this->tokens[0]) {
             if ($context_closers && in_array($peek->getTokenName(), $context_closers)) {
