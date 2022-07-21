@@ -21,8 +21,6 @@ const ENDERS = [
     'T_ENDSWITCH',
 ];
 
-const DEBUG_PREFIX = '        ';
-
 function convert($code)
 {
     $tokens = PhpToken::tokenize($code);
@@ -38,12 +36,14 @@ function convert($code)
     }
 }
 
+
 class to_alternative implements conversion_handler
 {
     public $control_body_starting = false;
     public int $level = 0;
     public $id = 0;
     public $signaller = null;
+    public $ignore_next_token = false;
 
     public function set_signaller(signaller $signaller): void
     {
@@ -56,21 +56,19 @@ class to_alternative implements conversion_handler
 
         $id = ++$this->id;
 
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="context">' . "\n";
-
         if ($this->control_body_starting) {
             $this->control_body_starting = false;
+
+            if ($context_opener) {
+                $this->ignore_next_token = true;
+            }
 
             if ($context_opener == '{') {
                 $opening_tag_suppressed = true;
                 array_shift($tokens);
             } elseif ($context_opener == ':') {
                 array_shift($tokens); // our enter_control_body will print it
-            // } else {
-            //     echo '«' . @$tokens[0] . '»';
             }
-        } elseif ($context_opener) {
-            $this->handle_tokens($tokens);
         }
 
         $this->level++;
@@ -86,7 +84,6 @@ class to_alternative implements conversion_handler
 
         $id = ++$this->id;
 
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="control">' . "\n";
         $got = @$tokens[0];
 
         if (!$got || $got->getTokenName() !== $control) {
@@ -94,8 +91,6 @@ class to_alternative implements conversion_handler
 
             exit(1);
         }
-
-        $this->handle_tokens($tokens);
 
         $this->level++;
 
@@ -110,8 +105,6 @@ class to_alternative implements conversion_handler
 
         $id = ++$this->id;
 
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '<div class="controlbody">' . "\n";
-
         $end = ENDS[$name];
 
         $this->level++;
@@ -121,14 +114,16 @@ class to_alternative implements conversion_handler
 
     public function handle_tokens(array &$tokens): void
     {
+        if ($this->ignore_next_token) {
+            $this->ignore_next_token = false;
+
+            return;
+        }
+
         $token = array_shift($tokens);
 
         if ($token) {
-            if ($token->getTokenName() !== 'T_INLINE_HTML') {
-                echo str_repeat(DEBUG_PREFIX, $this->level) . htmlspecialchars($token->text) . "<br>\n"; // echo stuff in the middle
-            } else {
-                echo str_repeat(DEBUG_PREFIX, $this->level) . '«HTML»' . "<br>\n"; // echo stuff in the middle
-            }
+            echo $token->text;
         } else {
             error_log('Asked to handle token but there is none');
             error_log(print_r(debug_backtrace(), true));
@@ -142,14 +137,11 @@ class to_alternative implements conversion_handler
         if (!$daisychain) {
             echo $message->end . ';';
         }
-
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- /controlbody -->' . "\n";
     }
 
     public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void
     {
         $this->level--;
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- /control -->' . "\n";
     }
 
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
@@ -178,19 +170,11 @@ class to_alternative implements conversion_handler
                 if ($peek && $peek->getTokenName() === ';') {
                     array_splice($tokens, $peek_index, 1);
                 }
-            } elseif (!in_array($context_closer, ['T_ELSE', 'T_ELSEIF' /*, 'T_CLOSE_TAG' */])) {
+            } elseif (!in_array($context_closer, ['T_ELSE', 'T_ELSEIF'])) {
                 $this->handle_tokens($tokens);
-            // } elseif ($context_closer == 'T_CLOSE_TAG') {
-            //     echo '«';
-            //     $this->handle_tokens($tokens);
-            //     echo '»';
             }
         }
-
-        echo str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- context -->' . "\n";
     }
 }
-
-echo '<style>div { margin: 0 0 0 1em } .context { background-color: lightblue; } .control { background-color: pink; } .controlbody { background-color: lightgreen; }</style>';
 
 convert(stream_get_contents(STDIN));
