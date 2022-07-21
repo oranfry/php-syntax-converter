@@ -53,20 +53,13 @@ class signaller
         return $token;
     }
 
-    private function handle_control($name, $already_started = false)
+    private function handle_control($name)
     {
         $message = $this->handler->enter_control($this->tokens, $name);
 
         $expect_control_details = $name !== 'T_ELSE';
 
         while ($peek = @$this->tokens[0]) {
-            if (!$already_started && $peek->getTokenName() === $name) {
-                $this->handler->handle_tokens($this->tokens);
-                $already_started = true;
-
-                continue;
-            }
-
             if ($expect_control_details && $peek->getTokenName() === '(') {
                 $this->convert_r('(', [')']);
 
