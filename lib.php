@@ -55,7 +55,9 @@ class signaller
 
     private function handle_control($name)
     {
-        $message = $this->handler->enter_control($this->tokens, $name);
+        if ($this->handler instanceof enter_control_listener) {
+            $message = $this->handler->enter_control($this->tokens, $name);
+        }
 
         $this->handler->handle_tokens($this->tokens);
 
@@ -66,7 +68,10 @@ class signaller
                 $this->convert_r('(', [')']);
 
                 $this->handler->handle_tokens($this->tokens);
-                $this->handler->left_context($this->tokens);
+
+                if ($this->handler instanceof left_context_listener) {
+                    $this->handler->left_context($this->tokens);
+                }
 
                 $expect_control_details = false;
 
@@ -84,7 +89,9 @@ class signaller
             $daisychain = null;
 
             if ($peek->getTokenName() == ':') {
-                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                if ($this->handler instanceof enter_control_body_listener) {
+                    $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                }
 
                 $closed_by = $this->convert_r(':', CONTROL_STRUCTURES[$name]);
 
@@ -94,16 +101,25 @@ class signaller
                     $this->handler->handle_tokens($this->tokens);
                 }
 
-                $this->handler->left_context($this->tokens);
+                if ($this->handler instanceof left_context_listener) {
+                    $this->handler->left_context($this->tokens);
+                }
 
-                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                if ($this->handler instanceof leave_control_body_listener) {
+                    $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                }
             } elseif ($peek->getTokenName() == '{') {
-                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                if ($this->handler instanceof enter_control_body_listener) {
+                    $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                }
 
                 $this->convert_r('{', ['}']);
 
                 $this->handler->handle_tokens($this->tokens);
-                $this->handler->left_context($this->tokens);
+
+                if ($this->handler instanceof left_context_listener) {
+                    $this->handler->left_context($this->tokens);
+                }
 
                 $peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT']);
 
@@ -111,15 +127,23 @@ class signaller
                     $daisychain = $peek2_name;
                 }
 
-                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                if ($this->handler instanceof leave_control_body_listener) {
+                    $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                }
             } elseif (in_array($peek->getTokenName(), array_keys(CONTROL_STRUCTURES))) {
-                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                if ($this->handler instanceof enter_control_body_listener) {
+                    $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                }
 
                 $this->handle_control($peek->getTokenName());
 
-                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                if ($this->handler instanceof leave_control_body_listener) {
+                    $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                }
             } elseif (($peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT'])) && $peek2->getTokenName() !== 'T_CLOSE_TAG') {
-                $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                if ($this->handler instanceof enter_control_body_listener) {
+                    $body_message = $this->handler->enter_control_body($this->tokens, $name);
+                }
 
                 $this->handle_statement();
 
@@ -129,10 +153,14 @@ class signaller
                     $daisychain = $peek2_name;
                 }
 
-                $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                if ($this->handler instanceof leave_control_body_listener) {
+                    $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
+                }
             }
 
-            $this->handler->leave_control($this->tokens, $name, $daisychain, $message);
+            if ($this->handler instanceof leave_control_listener) {
+                $this->handler->leave_control($this->tokens, $name, $daisychain, $message);
+            }
 
             return;
         }
@@ -143,31 +171,47 @@ class signaller
         $this->convert_r('', [';', 'T_CLOSE_TAG']);
 
         $this->handler->handle_tokens($this->tokens);
-        $this->handler->left_context($this->tokens);
+        if ($this->handler instanceof left_context_listener) {
+            $this->handler->left_context($this->tokens);
+        }
     }
 
     public function convert()
     {
         $this->convert_r();
 
-        $this->handler->left_context($this->tokens);
+        if ($this->handler instanceof left_context_listener) {
+            $this->handler->left_context($this->tokens);
+        }
     }
 
     private function convert_r(?string $context_opener = null, ?array $context_closers = null)
     {
         $ternary_level = 0;
 
-        $message = $this->handler->enter_context($this->tokens, $context_opener, $context_closers);
+        if ($this->handler instanceof enter_context_listener) {
+            $message = $this->handler->enter_context($this->tokens, $context_opener, $context_closers);
+        }
 
         if ($context_opener) {
             $this->handler->handle_tokens($this->tokens);
         }
 
         while ($peek = @$this->tokens[0]) {
+            if ($peek->getTokenName() == 'T_CLOSE_TAG' && $this->handler instanceof leave_php_listener) {
+                $this->handler->leave_php($this->tokens);
+            }
+
+            if ($peek->getTokenName() == 'T_OPEN_TAG' && $this->handler instanceof enter_php_listener) {
+                $this->handler->enter_php($this->tokens);
+            }
+
             if ($context_closers && in_array($peek->getTokenName(), $context_closers)) {
                 // We have found the close of the current context, fall out
 
-                $this->handler->leave_context($this->tokens, $context_opener, $peek->getTokenName(), $message);
+                if ($this->handler instanceof leave_context_listener) {
+                    $this->handler->leave_context($this->tokens, $context_opener, $peek->getTokenName(), $message);
+                }
 
                 return $peek->getTokenName();
             }
@@ -186,7 +230,10 @@ class signaller
                 $this->convert_r($peek->getTokenName(), [$matching_brace]);
 
                 $this->handler->handle_tokens($this->tokens);
-                $this->handler->left_context($this->tokens);
+
+                if ($this->handler instanceof left_context_listener) {
+                    $this->handler->left_context($this->tokens);
+                }
 
                 continue;
             }
@@ -202,18 +249,49 @@ class signaller
             $this->handler->handle_tokens($this->tokens);
         }
 
-        $this->handler->leave_context($this->tokens, $context_opener, null, $message);
+        if ($this->handler instanceof leave_context_listener) {
+            $this->handler->leave_context($this->tokens, $context_opener, null, $message);
+        }
     }
 }
 
 interface conversion_handler {
-    public function enter_context(array &$tokens, ?string $context_opener, ?array $context_closers);
-    public function enter_control_body(array &$tokens, string $name);
-    public function enter_control(array &$tokens, string $name);
     public function handle_tokens(array &$tokens): void;
-    public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void;
-    public function leave_control_body(array &$tokens, string $name, ?string $daisychain, $message): void;
-    public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void;
-    public function left_context(array &$tokens): void;
     public function set_signaller(signaller $signaller): void;
+}
+
+interface enter_context_listener {
+    public function enter_context(array &$tokens, ?string $context_opener, ?array $context_closers);
+}
+
+interface enter_control_body_listener {
+    public function enter_control_body(array &$tokens, string $name);
+}
+
+interface enter_control_listener {
+    public function enter_control(array &$tokens, string $name);
+}
+
+interface enter_php_listener {
+    public function enter_php(array &$tokens);
+}
+
+interface leave_context_listener {
+    public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void;
+}
+
+interface leave_control_body_listener {
+    public function leave_control_body(array &$tokens, string $name, ?string $daisychain, $message): void;
+}
+
+interface leave_control_listener {
+    public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void;
+}
+
+interface left_context_listener {
+    public function left_context(array &$tokens): void;
+}
+
+interface leave_php_listener {
+    public function leave_php(array &$tokens): void;
 }
