@@ -44,6 +44,10 @@ class to_alternative implements conversion_handler
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
     {
     }
+
+    public function left_context(array &$tokens): void
+    {
+    }
 }
 
 convert(stream_get_contents(STDIN));
