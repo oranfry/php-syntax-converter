@@ -16,37 +16,9 @@ class to_alternative implements conversion_handler
     {
     }
 
-    public function enter_context(array &$tokens, ?string $context_opener, ?array $context_closers)
-    {
-    }
-
-    public function enter_control(array &$tokens, string $control)
-    {
-    }
-
-    public function enter_control_body(array &$tokens, string $name)
-    {
-    }
-
     public function handle_tokens(array &$tokens): void
     {
         echo array_shift($tokens)->text;
-    }
-
-    public function leave_control_body(array &$tokens, string $control, ?string $daisychain, $message): void
-    {
-    }
-
-    public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void
-    {
-    }
-
-    public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
-    {
-    }
-
-    public function left_context(array &$tokens): void
-    {
     }
 }
 

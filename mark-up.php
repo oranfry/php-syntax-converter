@@ -42,7 +42,7 @@ function convert($code)
     (new signaller($handler, $tokens))->convert();
 }
 
-class to_alternative implements conversion_handler
+class to_alternative implements conversion_handler, enter_context_listener, enter_control_listener, enter_control_body_listener, leave_control_body_listener, leave_control_listener, leave_context_listener, left_context_listener
 {
     public $control_body_starting = false;
     public int $level = 0;

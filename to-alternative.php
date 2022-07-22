@@ -21,26 +21,9 @@ const ENDERS = [
     'T_ENDSWITCH',
 ];
 
-function convert($code)
-{
-    $tokens = PhpToken::tokenize($code);
-    $handler = new to_alternative;
-    $signaller = new signaller($handler, $tokens);
-
-    $signaller->convert();
-
-    if ($handler->level !== 0) {
-        error_log('level not zero at the end, [' . $handler->level . '] instead');
-
-        exit(1);
-    }
-}
-
-
-class to_alternative implements conversion_handler
+class to_alternative implements conversion_handler, enter_context_listener, enter_control_listener, enter_control_body_listener, leave_control_body_listener, leave_context_listener
 {
     public $control_body_starting = false;
-    public int $level = 0;
     public $id = 0;
     public $signaller = null;
     public $ignore_next_token = false;
@@ -71,8 +54,6 @@ class to_alternative implements conversion_handler
             }
         }
 
-        $this->level++;
-
         return (object) compact('id', 'opening_tag_suppressed');
     }
 
@@ -92,8 +73,6 @@ class to_alternative implements conversion_handler
             exit(1);
         }
 
-        $this->level++;
-
         return (object) compact('id');
     }
 
@@ -106,8 +85,6 @@ class to_alternative implements conversion_handler
         $id = ++$this->id;
 
         $end = ENDS[$name];
-
-        $this->level++;
 
         return (object) compact('id', 'end');
     }
@@ -132,21 +109,13 @@ class to_alternative implements conversion_handler
 
     public function leave_control_body(array &$tokens, string $control, ?string $daisychain, $message): void
     {
-        $this->level--;
-
         if (!$daisychain) {
             echo $message->end . ';';
         }
     }
 
-    public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void
-    {
-        $this->level--;
-    }
-
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
     {
-        $this->level--;
         $this->ignore_next_token = true;
 
         if ($message->opening_tag_suppressed) {
@@ -174,10 +143,11 @@ class to_alternative implements conversion_handler
             $this->ignore_next_token = false;
         }
     }
-
-    public function left_context(array &$tokens): void
-    {
-    }
 }
 
-convert(stream_get_contents(STDIN));
+$code = stream_get_contents(STDIN);
+$tokens = PhpToken::tokenize($code);
+$handler = new to_alternative;
+$signaller = new signaller($handler, $tokens);
+
+$signaller->convert();
