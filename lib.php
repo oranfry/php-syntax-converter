@@ -202,8 +202,8 @@ class signaller
                 $this->handler->leave_php($this->tokens);
             }
 
-            if ($peek->getTokenName() == 'T_OPEN_TAG' && $this->handler instanceof enter_php_listener) {
-                $this->handler->enter_php($this->tokens);
+            if (in_array($peek->getTokenName(), ['T_OPEN_TAG', 'T_OPEN_TAG_WITH_ECHO']) && $this->handler instanceof enter_php_listener) {
+                $this->handler->enter_php($this->tokens, $peek->getTokenName() == 'T_OPEN_TAG_WITH_ECHO');
             }
 
             if ($context_closers && in_array($peek->getTokenName(), $context_closers)) {
@@ -252,6 +252,10 @@ class signaller
         if ($this->handler instanceof leave_context_listener) {
             $this->handler->leave_context($this->tokens, $context_opener, null, $message);
         }
+
+        if ($this->handler instanceof out_of_tokens_listener) {
+            $this->handler->out_of_tokens();
+        }
     }
 }
 
@@ -273,7 +277,7 @@ interface enter_control_listener {
 }
 
 interface enter_php_listener {
-    public function enter_php(array &$tokens);
+    public function enter_php(array &$tokens, bool $with_echo): void;
 }
 
 interface leave_context_listener {
@@ -294,4 +298,12 @@ interface left_context_listener {
 
 interface leave_php_listener {
     public function leave_php(array &$tokens): void;
+}
+
+interface left_php_listener {
+    public function left_php(array &$tokens): void;
+}
+
+interface out_of_tokens_listener {
+    public function out_of_tokens(): void;
 }
