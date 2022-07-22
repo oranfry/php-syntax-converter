@@ -65,6 +65,9 @@ class signaller
             if ($expect_control_details && $peek->getTokenName() === '(') {
                 $this->convert_r('(', [')']);
 
+                $this->handler->handle_tokens($this->tokens);
+                $this->handler->left_context($this->tokens);
+
                 $expect_control_details = false;
 
                 continue;
@@ -87,13 +90,20 @@ class signaller
 
                 if (in_array($closed_by, ['T_ELSEIF', 'T_ELSE'])) {
                     $daisychain = $closed_by;
+                } else {
+                    $this->handler->handle_tokens($this->tokens);
                 }
+
+                $this->handler->left_context($this->tokens);
 
                 $this->handler->leave_control_body($this->tokens, $name, $daisychain, $body_message);
             } elseif ($peek->getTokenName() == '{') {
                 $body_message = $this->handler->enter_control_body($this->tokens, $name);
 
                 $this->convert_r('{', ['}']);
+
+                $this->handler->handle_tokens($this->tokens);
+                $this->handler->left_context($this->tokens);
 
                 $peek2 = $this->peek(['T_WHITESPACE', 'T_COMMENT']);
 
@@ -131,11 +141,16 @@ class signaller
     private function handle_statement()
     {
         $this->convert_r('', [';', 'T_CLOSE_TAG']);
+
+        $this->handler->handle_tokens($this->tokens);
+        $this->handler->left_context($this->tokens);
     }
 
     public function convert()
     {
         $this->convert_r();
+
+        $this->handler->left_context($this->tokens);
     }
 
     private function convert_r(?string $context_opener = null, ?array $context_closers = null)
@@ -170,6 +185,9 @@ class signaller
 
                 $this->convert_r($peek->getTokenName(), [$matching_brace]);
 
+                $this->handler->handle_tokens($this->tokens);
+                $this->handler->left_context($this->tokens);
+
                 continue;
             }
 
@@ -196,5 +214,6 @@ interface conversion_handler {
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void;
     public function leave_control_body(array &$tokens, string $name, ?string $daisychain, $message): void;
     public function leave_control(array &$tokens, string $name, ?string $daisychain, $message): void;
+    public function left_context(array &$tokens): void;
     public function set_signaller(signaller $signaller): void;
 }
