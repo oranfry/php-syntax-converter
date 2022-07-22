@@ -147,6 +147,7 @@ class to_alternative implements conversion_handler
     public function leave_context(array &$tokens, ?string $context_opener, ?string $context_closer, $message): void
     {
         $this->level--;
+        $this->ignore_next_token = true;
 
         if ($message->opening_tag_suppressed) {
             $got = array_shift($tokens);
@@ -155,25 +156,27 @@ class to_alternative implements conversion_handler
                 error_log('expected }, got ' . $got->getTokenName());
                 exit(1);
             }
-        } elseif ($context_closer) {
-            if (in_array($context_closer, ENDERS)) {
-                $got = array_shift($tokens);
+        } elseif ($context_closer && in_array($context_closer, ENDERS)) {
+            $got = array_shift($tokens);
 
-                if ($context_closer !== $got->getTokenName()) {
-                    error_log('expected ' . $context_closer . ', got ' . $got->getTokenName());
+            if ($context_closer !== $got->getTokenName()) {
+                error_log('expected ' . $context_closer . ', got ' . $got->getTokenName());
 
-                    exit(1);
-                }
-
-                $peek = $this->signaller->peek(['T_WHITESPACE', 'T_COMMENT'], $peek_index);
-
-                if ($peek && $peek->getTokenName() === ';') {
-                    array_splice($tokens, $peek_index, 1);
-                }
-            } elseif (!in_array($context_closer, ['T_ELSE', 'T_ELSEIF'])) {
-                $this->handle_tokens($tokens);
+                exit(1);
             }
+
+            $peek = $this->signaller->peek(['T_WHITESPACE', 'T_COMMENT'], $peek_index);
+
+            if ($peek && $peek->getTokenName() === ';') {
+                array_splice($tokens, $peek_index, 1);
+            }
+        } else {
+            $this->ignore_next_token = false;
         }
+    }
+
+    public function left_context(array &$tokens): void
+    {
     }
 }
 
