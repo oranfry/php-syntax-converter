@@ -12,7 +12,6 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
     public $just_ended_heredoc = false;
     public $just_opened_php = false;
     public $just_opened_switch = false;
-    public $just_saw_comment = false;
     public $php_with_echo = false;
     public $phpbits = [];
     public $signaller = null;
@@ -30,6 +29,13 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
 
         if (in_array($name, ['T_DOC_COMMENT', 'T_COMMENT'])) {
             return !$this->phpbits;
+        }
+
+        if (
+            $this->signaller->has($this->phpbits, ['T_COMMENT']) &&
+            $this->signaller->has_only($this->phpbits, ['T_WHITESPACE', 'T_COMMENT'])
+        ) {
+            return true;
         }
 
         if ($name == ':') {
@@ -67,10 +73,14 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
         return false;
     }
 
-    public function terminate($token): void
+    public function terminate($token, array &$tokens): void
     {
         if ($token && $token->getTokenName() !== 'T_CLOSE_TAG') {
             $this->phpbits[] = $token;
+        }
+
+        while (($peek = @$tokens[0]) && $peek->getTokenName() == 'T_WHITESPACE') {
+            $this->phpbits[] = array_shift($tokens);
         }
 
         $leading_whitespace = [];
@@ -78,7 +88,7 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
 
         $trimmed = static::trim_whitespace($this->phpbits, $leading_whitespace, $trailing_whitespace);
 
-        if ($trimmed || $this->just_saw_comment) {
+        if ($trimmed) {
             if (!$this->just_opened_php) {
                 foreach ($leading_whitespace as $whitespace) {
                     echo $whitespace->text;
@@ -95,21 +105,31 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
 
             echo implode('', array_map(fn ($bit) => $bit->text, $trimmed));
 
+            $sep = ' ';
+
             if ($this->just_ended_heredoc) {
                 $this->just_ended_heredoc = false;
-
-                echo "\n";
-            } else {
-                echo ' ';
+                $sep = "\n";
             }
 
-            echo '?>';
+            echo $sep . '?>';
 
-            foreach ($trailing_whitespace as $whitespace) {
-                echo $whitespace->text;
+            if (count($trailing_whitespace) > 1) {
+                error_log('More than one trailing whitespace?');
+
+                exit(1);
             }
 
-            $this->just_saw_comment = false;
+            if ($whitespace = @$trailing_whitespace[0]) {
+                $first = substr($whitespace->text, 0, 1);
+
+                if ($first !== $sep) {
+                    echo $first;
+                }
+
+                echo substr($whitespace->text, 1);
+            }
+
             $this->just_opened_php = false;
         }
 
@@ -136,14 +156,8 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
             return;
         }
 
-        if (in_array($name, ['T_COMMENT', 'T_DOC_COMMENT'])) {
-            $this->just_saw_comment = true;
-        } elseif ($name !== 'T_WHITESPACE') {
-            $this->just_saw_comment = false;
-        }
-
         if ($this->is_terminator($token)) {
-            $this->terminate($token);
+            $this->terminate($token, $tokens);
 
             return;
         }
@@ -181,7 +195,7 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
 
         $this->suppress_next = true;
 
-        $this->terminate(@$tokens[0]);
+        $this->terminate(@$tokens[0], $tokens);
     }
 
     public static function trim_whitespace(array $bits, array &$leading, array &$trailing)
@@ -194,22 +208,23 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
         $leading = array_slice($bits, 0, $i);
 
         for (; $i < count($bits); $i++) {
+            $collected[] = $bits[$i];
+
             if ($bits[$i]->getTokenName() != 'T_WHITESPACE') {
-                $trimmed = array_merge($trimmed, $collected, [$bits[$i]]);
+                $trimmed = array_merge($trimmed, $collected);
                 $collected = [];
-            } else {
-                $collected[] = $bits[$i];
             }
         }
 
-        $trailing = &$collected;
+        $trailing = $collected;
 
         return $trimmed;
     }
 
     public function out_of_tokens(): void
     {
-        $this->terminate(null);
+        $fake_tokens = [];
+        $this->terminate(null, $fake_tokens);
     }
 }
 

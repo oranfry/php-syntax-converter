@@ -53,6 +53,24 @@ class signaller
         return $token;
     }
 
+    public function has_only(array &$tokens, array $names)
+    {
+        return array_reduce(
+            $tokens,
+            fn ($carry, $token) => $carry && in_array($token->getTokenName(), $names),
+            true,
+        );
+    }
+
+    public function has(array &$tokens, array $names)
+    {
+        return array_reduce(
+            $tokens,
+            fn ($carry, $token) => $carry || in_array($token->getTokenName(), $names),
+            false,
+        );
+    }
+
     private function handle_control($name)
     {
         if ($this->handler instanceof enter_control_listener) {
