@@ -1,9 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-$code = stream_get_contents(STDIN);
-$tokens = PhpToken::tokenize($code);
+require __DIR__ . '/lib.php';
+require __DIR__ . '/classes/explain.php';
 
-while ($token = array_shift($tokens)) {
-    echo "Line {$token->line}: {$token->getTokenName()} ('{$token->text}')", PHP_EOL;
-}
+perform_conversion(explain::class);
