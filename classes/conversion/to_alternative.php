@@ -1,5 +1,15 @@
 <?php
 
+namespace conversion;
+
+use conversion_handler;
+use enter_context_listener;
+use enter_control_body_listener;
+use enter_control_listener;
+use leave_context_listener;
+use leave_control_body_listener;
+use signaller;
+
 class to_alternative implements conversion_handler, enter_context_listener, enter_control_listener, enter_control_body_listener, leave_control_body_listener, leave_context_listener
 {
     public $control_body_starting = false;
@@ -39,7 +49,7 @@ class to_alternative implements conversion_handler, enter_context_listener, ente
             }
         }
 
-        return (object) compact('id', 'opening_tag_suppressed');
+        return (object)compact('id', 'opening_tag_suppressed');
     }
 
     public function enter_control(array &$tokens, string $control)
@@ -58,7 +68,7 @@ class to_alternative implements conversion_handler, enter_context_listener, ente
             exit(1);
         }
 
-        return (object) compact('id');
+        return (object)compact('id');
     }
 
     public function enter_control_body(array &$tokens, string $name)
@@ -71,7 +81,7 @@ class to_alternative implements conversion_handler, enter_context_listener, ente
 
         $end = ENDS[$name];
 
-        return (object) compact('id', 'end');
+        return (object)compact('id', 'end');
     }
 
     public function handle_tokens(array &$tokens): void
@@ -95,7 +105,7 @@ class to_alternative implements conversion_handler, enter_context_listener, ente
     public function leave_control_body(array &$tokens, string $control, ?string $daisychain, $message): void
     {
         if (!$daisychain) {
-            fwrite($this->stream,$message->end . ';');
+            fwrite($this->stream, $message->end . ';');
         }
     }
 

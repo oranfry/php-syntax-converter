@@ -1,5 +1,10 @@
 <?php
 
+namespace conversion;
+
+use conversion_handler;
+use signaller;
+
 class explain implements conversion_handler
 {
     public $stream;

@@ -57,20 +57,27 @@ function parse_single_conversion_args($argv)
     $command = array_shift($argv);
 
     $parameters = [
-        'outfile' => (object) ['short' => 'o', 'default' => '-'],
+        'help' => (object) ['short' => 'h'],
+        'in-place' => (object) ['short' => 'p'],
+        'outfile' => (object) ['short' => 'o', 'default' => '-', 'values' => 1],
     ];
 
-    [$arguments, $flags, $remaining] = load_arguments_and_flags($parameters, $argv);
+    [$arguments, $remaining] = load_arguments_and_flags($parameters, $argv);
 
     if (count($remaining) > 1) {
         error_log("Usage: $command [-p] [--outfile=OUTFILE|-o OUTFILE] INFILE");
+        error_log("       $command [--help|-h]");
 
         exit(1);
     }
 
     $arguments['infile'] = $remaining[0] ?? '-';
 
-    if ($arguments['in-place'] = in_array('p', $flags)) {
+    if ($arguments['in-place']) {
+        if ($arguments['outfile'] != $parameters['outfile']->default) {
+            error_log('Warning: Specified OUTFILE overwritten due to --in-place mode.');
+        }
+
         $arguments['outfile'] = $arguments['infile'];
     }
 
@@ -88,7 +95,13 @@ function do_pipeline(array $arguments)
     }
 
     foreach ($arguments['pipeline'] as $handler_class) {
-        require_once __DIR__ . '/classes/' . $handler_class . '.php';
+        if (!is_file($class_file = __DIR__ . '/classes/' . str_replace('\\', '/', $handler_class) . '.php')) {
+            error_log('No such conversion: "' . $handler_class . '"');
+
+            exit(1);
+        }
+
+        require_once $class_file;
 
         $tokens = PhpToken::tokenize(stream_get_contents($stream));
 
@@ -117,12 +130,16 @@ function do_pipeline(array $arguments)
 function load_arguments_and_flags($parameters, $argv)
 {
     $rem_argv = [];
-    $arguments = array_map(fn ($p) => $p->default ?? null, $parameters);
-    $flags = [];
+    $arguments = array_map(fn ($p) => ($p->values ?? 0) == 0 ? false : $p->default ?? null, $parameters);
 
     for ($i = 0; $i < count($argv); $i++) {
         foreach ($parameters as $param => $details) {
-            $pattern = '--' . str_replace('_', '-', $param) . '(?:=(.*))?';
+            $num_values = $details->values ?? 0;
+            $pattern = '--' . str_replace('_', '-', $param);
+
+            if ($num_values == 1) {
+                $pattern .= '(?:=(.*))?';
+            }
 
             if ($short = @$details->short) {
                 $pattern = '(?:-' . $short . '|' . $pattern . ')';
@@ -131,20 +148,24 @@ function load_arguments_and_flags($parameters, $argv)
             $pattern = '/^' . $pattern . '$/';
 
             if (preg_match($pattern, $argv[$i], $matches)) {
-                $arguments[$param] = @$matches[1] ?? @$argv[++$i];
+                if (!$num_values) {
+                    $arguments[$param] = true;
+                } elseif ($num_values == 1) {
+                    $arguments[$param] = $matches[1] ?? @$argv[++$i];
+                } else {
+                    $arguments[$param] = [];
+
+                    for ($v = 0; $v < $num_values; $v++) {
+                        $arguments[$param][] = @$argv[++$i];
+                    }
+                }
 
                 continue 2;
             }
         }
 
-        if (preg_match('/^-([a-zA-Z])$/', $argv[$i], $groups) || preg_match('/^--([a-zA-Z-]+)$/', $argv[$i], $groups)) {
-            $flags[] = $groups[1];
-
-            continue;
-        }
-
         $rem_argv[] = $argv[$i];
     }
 
-    return [$arguments, $flags, $rem_argv];
+    return [$arguments, $rem_argv];
 }

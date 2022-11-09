@@ -1,5 +1,18 @@
 <?php
 
+namespace conversion;
+
+use before_listener;
+use conversion_handler;
+use enter_context_listener;
+use enter_control_body_listener;
+use enter_control_listener;
+use leave_context_listener;
+use leave_control_body_listener;
+use leave_control_listener;
+use left_context_listener;
+use signaller;
+
 class mark_up implements conversion_handler, enter_context_listener, enter_control_listener, enter_control_body_listener, leave_control_body_listener, leave_control_listener, leave_context_listener, left_context_listener, before_listener
 {
     public $context_id = null;
@@ -26,7 +39,7 @@ class mark_up implements conversion_handler, enter_context_listener, enter_contr
 
         $this->level++;
 
-        return (object) compact('id');
+        return (object)compact('id');
     }
 
     public function enter_control(array &$tokens, string $control)
@@ -37,7 +50,7 @@ class mark_up implements conversion_handler, enter_context_listener, enter_contr
 
         $this->level++;
 
-        return (object) compact('id');
+        return (object)compact('id');
     }
 
     public function enter_control_body(array &$tokens, string $name)
@@ -48,7 +61,7 @@ class mark_up implements conversion_handler, enter_context_listener, enter_contr
 
         $this->level++;
 
-        return (object) compact('id');
+        return (object)compact('id');
     }
 
     public function handle_tokens(array &$tokens): void
@@ -86,6 +99,7 @@ class mark_up implements conversion_handler, enter_context_listener, enter_contr
     {
         fwrite($this->stream, str_repeat(DEBUG_PREFIX, $this->level) . '</div><!-- context ' . $this->context_id . ' -->' . "\n");
     }
+
     public function before(array &$tokens): void
     {
         fwrite($this->stream, '

@@ -1,5 +1,13 @@
 <?php
 
+namespace conversion;
+
+use conversion_handler;
+use enter_php_listener;
+use leave_php_listener;
+use out_of_tokens_listener;
+use signaller;
+
 class one_tag_per_statement implements conversion_handler, enter_php_listener, leave_php_listener, out_of_tokens_listener
 {
     public $extra = null;
@@ -106,7 +114,7 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
                 fwrite($this->stream, '<?php ');
             }
 
-            fwrite($this->stream, implode('', array_map(fn ($bit) => $bit->text, $trimmed)));
+            fwrite($this->stream, implode('', array_map(fn($bit) => $bit->text, $trimmed)));
 
             $sep = ' ';
 
@@ -208,7 +216,7 @@ class one_tag_per_statement implements conversion_handler, enter_php_listener, l
         $trimmed = [];
         $collected = [];
 
-        for ($i = 0; $i < count($bits) && $bits[$i]->getTokenName() == 'T_WHITESPACE'; $i++);
+        for ($i = 0; $i < count($bits) && $bits[$i]->getTokenName() == 'T_WHITESPACE'; $i++) ;
 
         $leading = array_slice($bits, 0, $i);
 
