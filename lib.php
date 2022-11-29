@@ -62,7 +62,7 @@ function parse_single_conversion_args($argv)
         'outfile' => (object) ['short' => 'o', 'default' => '-', 'values' => 1],
     ];
 
-    [$arguments, $remaining] = load_arguments_and_flags($parameters, $argv);
+    [$arguments, $remaining] = load_arguments_and_flags($parameters, $argv, $specified);
 
     if (count($remaining) > 1) {
         error_log("Usage: $command [-p] [--outfile=OUTFILE|-o OUTFILE] INFILE");
@@ -74,8 +74,10 @@ function parse_single_conversion_args($argv)
     $arguments['infile'] = $remaining[0] ?? '-';
 
     if ($arguments['in-place']) {
-        if ($arguments['outfile'] != $parameters['outfile']->default) {
-            error_log('Warning: Specified OUTFILE overwritten due to --in-place mode.');
+        if ($specified['outfile']) {
+            error_log('Error: --outfile is incompatible with --in-place.');
+
+            exit(1);
         }
 
         $arguments['outfile'] = $arguments['infile'];
@@ -127,10 +129,11 @@ function do_pipeline(array $arguments)
     fclose($outstream);
 }
 
-function load_arguments_and_flags($parameters, $argv)
+function load_arguments_and_flags($parameters, $argv, &$specified = []): array
 {
     $rem_argv = [];
     $arguments = array_map(fn ($p) => ($p->values ?? 0) == 0 ? false : $p->default ?? null, $parameters);
+    $specified = array_map(fn () => false, $parameters);
 
     for ($i = 0; $i < count($argv); $i++) {
         foreach ($parameters as $param => $details) {
@@ -147,21 +150,25 @@ function load_arguments_and_flags($parameters, $argv)
 
             $pattern = '/^' . $pattern . '$/';
 
-            if (preg_match($pattern, $argv[$i], $matches)) {
-                if (!$num_values) {
-                    $arguments[$param] = true;
-                } elseif ($num_values == 1) {
-                    $arguments[$param] = $matches[1] ?? @$argv[++$i];
-                } else {
-                    $arguments[$param] = [];
-
-                    for ($v = 0; $v < $num_values; $v++) {
-                        $arguments[$param][] = @$argv[++$i];
-                    }
-                }
-
-                continue 2;
+            if (!preg_match($pattern, $argv[$i], $matches)) {
+                continue;
             }
+
+            $specified[$param] = true;
+
+            if (!$num_values) {
+                $arguments[$param] = true;
+            } elseif ($num_values == 1) {
+                $arguments[$param] = $matches[1] ?? @$argv[++$i];
+            } else {
+                $arguments[$param] = [];
+
+                for ($v = 0; $v < $num_values; $v++) {
+                    $arguments[$param][] = @$argv[++$i];
+                }
+            }
+
+            continue 2;
         }
 
         $rem_argv[] = $argv[$i];
