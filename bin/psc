@@ -1,9 +1,9 @@
 #!/usr/bin/env php
 <?php
 
-require __DIR__ . '/lib.php';
+require __DIR__ . '/../lib.php';
 
-require __DIR__ . '/classes/signaller.php';
+require __DIR__ . '/../classes/signaller.php';
 
 $arguments = (function() use ($argv) {
     $command = array_shift($argv);
@@ -15,7 +15,7 @@ $arguments = (function() use ($argv) {
         'outfile' => (object) ['short' => 'o', 'default' => '-', 'values' => 1],
     ];
 
-    [$arguments, $remaining] = load_arguments_and_flags($parameters, $argv);
+    [$arguments, $remaining] = load_arguments_and_flags($parameters, $argv, $specified);
 
     if (!$arguments['help']) {
         if (!count($remaining)) {
@@ -29,7 +29,7 @@ $arguments = (function() use ($argv) {
         error_log("Usage: $command [-p] [--infile=INFILE|-i INFILE] [--outfile=OUTFILE|-o OUTFILE] conversion1 [conversion 2] [...]");
         error_log("       $command [--help|-h]");
 
-        $handle = opendir(__DIR__ . '/classes/conversion');
+        $handle = opendir(__DIR__ . '/../classes/conversion');
 
         error_log('');
         error_log('Available conversions:');
@@ -51,8 +51,10 @@ $arguments = (function() use ($argv) {
     $arguments['pipeline'] = array_map(fn ($conversion) => 'conversion\\' . $conversion, $remaining);
 
     if ($arguments['in-place']) {
-        if ($arguments['outfile'] != $parameters['outfile']->default) {
-            error_log('Warning: Specified OUTFILE overwritten due to --in-place mode.');
+        if ($specified['outfile']) {
+            error_log('Error: --outfile is incompatible with --in-place.');
+
+            exit(1);
         }
 
         $arguments['outfile'] = $arguments['infile'];
